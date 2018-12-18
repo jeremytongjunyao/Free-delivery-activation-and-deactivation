@@ -1,0 +1,391 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import date as dt
+from datetime import timedelta as tdelta
+from selenium.webdriver.common.action_chains import ActionChains
+import csv
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.chrome.options import Options
+import os
+import os.path
+
+# Import CSV, split by comma and create array
+def get_csv(csv_name):
+	with open(csv_name,'r') as csvfile:
+		reader = csv.reader(csvfile, skipinitialspace=True)
+		array = []
+		for row in reader:
+			array.append(row)
+	return array
+
+'''Launching Chrome with my user data'''
+def FDenableAndDisable(todayD, yesterdayD):
+    save_path = 'C:/Users/Jeremy Tong/AppData/Local/Programs/Python/Python37-32/automation/'
+    todayDate = ((dt.today()-tdelta(1)).strftime("%m_%d_%Y"))
+    completeName = os.path.join(save_path, str(todayDate)+".txt") 
+    f= open(completeName,"w+")
+    
+    options = webdriver.ChromeOptions()
+    options.add_argument("--user-data-dir=C://Users/Jeremy Tong/AppData/Local/Google/Chrome/User Data/Default")
+    driver = webdriver.Chrome(options=options, executable_path="C:/Users/Jeremy Tong/AppData/Local/Programs/Python/Python37-32/Scripts/webdrivers/chromedriver")
+    driver.get("https://deliveroo.co.uk/admin/restaurants")
+
+    """Go to a disabled rx to pull its tag into an array"""
+
+    driver.find_element_by_tag_name('body').send_keys(Keys.COMMAND + 't')
+    driver.get("https://deliveroo.co.uk/admin/menus/21646")
+    mySelect = Select(driver.find_element_by_id("menu_tag_select"))
+    # get messina url
+    ##    driver.find_element_by_tag_name('body').send_keys(Keys.COMMAND + 't')
+    
+    # pull all tags into an array
+    tag_list = [o.text for o in mySelect.options]
+    tag_name = "Free Delivery"
+    time.sleep(5)
+
+
+
+    '''Connecting to google sheet API'''
+    scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
+    credentials = ServiceAccountCredentials.from_json_keyfile_name("C:/Users/Jeremy Tong/AppData/Local/Programs/Python/Python37-32/Scripts/My Project 78560-d91b84a0a320.json", scope)
+    gc = gspread.authorize(credentials)
+    wks = gc.open("Hong_Kong_Free_Delivery_Schedule").worksheet("Free_Delivery_Restaurants")
+    print("Number of rows in Gspread is " + str(wks.row_count))
+    dataframe = pd.DataFrame(wks.get_all_records())
+    print(dataframe.to_string())
+
+    Count_Row=dataframe.shape[0]
+    print("Number of rows in dataframe is " + str(Count_Row))
+    
+ 
+    '''Find starting date rx id'''
+    restaurantIDs = []
+    k = 0
+    while k < dataframe.shape[0]:
+
+        startDate = dataframe.iloc[k]['start_date']
+        if startDate == todayD:
+            restaurantId = dataframe.iloc[k]['restaurant_ID']
+            restaurantIDs.append(restaurantId)
+        k +=1
+
+    print("These restaurants are starting FD today ")
+    print(restaurantIDs)
+
+    ## Write logs of the automation
+    text_file = open(completeName, "w")
+    text_file.write("These restaurants are starting FD today " + str(todayD))
+    text_file.write(" restaurant IDs are" + str(restaurantIDs) )
+    text_file.close()
+
+    '''Find restaurants that pay for FD'''
+    restaurantsPayFD = []
+    x = 0
+    while x < dataframe.shape[0]:
+        row = dataframe.iloc[x]['borne_by']
+        if row == "Restaurant":
+            restaurantsPayFDid = dataframe.iloc[x]['restaurant_ID']
+            if restaurantsPayFDid in restaurantIDs:
+                restaurantsPayFD.append(restaurantsPayFDid)
+        x += 1
+    print("These restaurants are paying for FD ")
+    print(restaurantsPayFD)
+    text_file = open(completeName, "a+")
+    text_file.write("\nThese restaurants are paying for FD today " + str(todayD))
+    text_file.write("\nThe restaurant IDs that pay for FD are " + str(restaurantsPayFD) )
+    text_file.close()
+    
+
+    '''Find restaurants that pay for half of FD'''
+    restaurantsPayHalfid = []
+    x = 0
+    while x < dataframe.shape[0]:
+        row = dataframe.iloc[x]['borne_by']
+        if row == "Half half":
+            restaurantsPayHalfFDid = dataframe.iloc[x]['restaurant_ID']
+            if restaurantsPayHalfFDid in restaurantIDs:
+                restaurantsPayFD.append(restaurantsPayHalfid)
+        x += 1
+    print("These restaurants are paying for half of FD ")
+    print(restaurantsPayHalfid)
+    text_file = open(completeName, "a+")
+    text_file.write("\nThese restaurants are paying for half the cost of FD today " + str(todayD))
+    text_file.write("\nThe restaurant IDs that pay for half the cost of FD are " + str(restaurantsPayHalfid) )
+    text_file.close()
+    
+    driver.get("https://deliveroo.co.uk/admin/restaurants")
+    time.sleep(1)
+
+    '''Find menu IDs for FD restaurants'''
+    menuIDs = []
+    k = 0
+    while k < dataframe.shape[0]:
+
+        startDate = dataframe.iloc[k]['start_date']
+        if startDate == todayD:
+            menuID = dataframe.iloc[k]['menu_ID']
+            menuIDs.append(menuID)
+        k +=1
+
+    print("These menus are getting FD tag added ")
+    print(menuIDs)
+    
+    text_file = open(completeName, "a+")
+    text_file.write("\nThese menus are getting FD tag added today " + str(todayD))
+    text_file.write("\nThe menu IDs getting FD tag added are " + str(menuIDs) )
+    text_file.close()
+            
+    
+    for restaurantID in restaurantIDs:
+
+        '''Changing delivery fee override to 0'''
+        
+##        driver.find_element_by_tag_name('body').send_keys(Keys.COMMAND + 't')
+        driver.get('https://deliveroo.hk/admin/restaurants/'+str(restaurantID)+'?edit=true')
+        print("Changing delivery fee override to 0 for restaurant ID " + str(restaurantID))
+        text_file = open(completeName, "a+")
+        text_file.write("\nChanging delivery fee override to 0 for restaurant ID " + str(restaurantID))
+        text_file.close()
+
+
+
+        deliveryFeeOverride = driver.find_element_by_id("restaurant_delivery_fee_override")
+        deliveryFeeOverride.send_keys((Keys.BACK_SPACE)*5+"0")
+
+        clickSubmit = driver.find_element_by_name("commit")
+        clickSubmit.click()
+
+        '''Adding 20HKD to contract if restaurants are paying and skip if it is paid by us'''
+        if restaurantID in restaurantsPayFD:
+            print("Adding 3SGD to contract constant to restaurant id "+ str(restaurantID))
+            text_file = open(completeName, "a+")
+            text_file.write("\nAdding 20HKD to contract constant to restaurant id "+ str(restaurantID))
+            text_file.close()
+
+            clickNewContract = driver.find_element_by_xpath("//*[@class='btn btn-primary js-url-actions-create-contract']")
+            clickNewContract.click()
+            time.sleep(3)
+            editContractButton = driver.find_element_by_xpath("//body[@class='admin_temp ng-scope modal-open']/div[@class='modal fade ng-isolate-scope in']/div[@class='modal-dialog modal-lg']/div[@class='modal-content']/div[@class='restaurant-user ng-scope']/div[@class='modal-body']/form[@class='ng-pristine ng-valid']/div[@class='row'][2]/div[@class='col-lg-10']/div[@class='btn-edit']/button[@class='btn btn-secondary']")
+            editContractButton.click()    
+            time.sleep(0.5)
+
+            '''Throw an exception'''
+            try:
+                changeConstant = driver.find_element_by_xpath("//td[4]/span[@class='editable-wrap editable-text ng-scope']/div[@class='editable-controls form-group']/input[@class='editable-input form-control ng-pristine ng-valid ng-touched']").send_keys((Keys.BACKSPACE)*5+"20")
+                time.sleep(0.5)
+                clickSave = driver.find_element_by_xpath("//div[@class='btn-form']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                clickSaveContract = driver.find_element_by_xpath("//div[@class='modal-footer']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+
+                
+            except:
+                changeConstant = driver.find_element_by_xpath("//td[4]/span[@class='editable-wrap editable-text ng-scope']/div[@class='editable-controls form-group']/input[@class='editable-input form-control ng-pristine ng-untouched ng-valid']").send_keys((Keys.BACKSPACE)*5+"20")
+                time.sleep(0.5)
+                clickSave = driver.find_element_by_xpath("//div[@class='btn-form']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                clickSaveContract = driver.find_element_by_xpath("//div[@class='modal-footer']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+##            Adding 10HKD to contract if restaurants are paying and skip if it is paid by us
+            
+        elif restaurantID in restaurantsPayHalfid:
+            print("Adding 10HKD to contract constant to restaurant id "+ str(restaurantID))
+            text_file = open(completeName, "a+")
+            text_file.write("\nAdding 10HKD to contract constant to restaurant id "+ str(restaurantID))
+            text_file.close()
+            
+            clickNewContract = driver.find_element_by_xpath("//*[@class='btn btn-primary js-url-actions-create-contract']")
+            clickNewContract.click()
+            time.sleep(3)
+            editContractButton = driver.find_element_by_xpath("//body[@class='admin_temp ng-scope modal-open']/div[@class='modal fade ng-isolate-scope in']/div[@class='modal-dialog modal-lg']/div[@class='modal-content']/div[@class='restaurant-user ng-scope']/div[@class='modal-body']/form[@class='ng-pristine ng-valid']/div[@class='row'][2]/div[@class='col-lg-10']/div[@class='btn-edit']/button[@class='btn btn-secondary']")
+            editContractButton.click()    
+            time.sleep(0.5)
+            
+            try:
+                changeConstant = driver.find_element_by_xpath("//td[4]/span[@class='editable-wrap editable-text ng-scope']/div[@class='editable-controls form-group']/input[@class='editable-input form-control ng-pristine ng-valid ng-touched']").send_keys((Keys.BACKSPACE)*5+"10")
+                time.sleep(0.5)
+                clickSave = driver.find_element_by_xpath("//div[@class='btn-form']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                clickSaveContract = driver.find_element_by_xpath("//div[@class='modal-footer']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+
+                
+            except:
+                changeConstant = driver.find_element_by_xpath("//td[4]/span[@class='editable-wrap editable-text ng-scope']/div[@class='editable-controls form-group']/input[@class='editable-input form-control ng-pristine ng-untouched ng-valid']").send_keys((Keys.BACKSPACE)*5+"10")
+                time.sleep(0.5)
+                clickSave = driver.find_element_by_xpath("//div[@class='btn-form']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                clickSaveContract = driver.find_element_by_xpath("//div[@class='modal-footer']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                
+        """Add Free Delivery menu tag"""
+    for menuID in menuIDs:
+        
+           # Scroll to the menu tag section
+           # Yet to work out how to get this to work without scrolling down
+        print("Add FD menu tag for menu ID " + str(menuID))
+        driver.get('https://deliveroo.hk/admin/menus/'+str(menuID))
+        driver.execute_script("window.scrollTo(0, 1700)")
+        time.sleep(1)
+
+            # location tag search field, click, enter tag, press enter (to pull through drop down)
+        try:
+            select = driver.find_element_by_class_name("select2-search__field")
+        except:
+            select = driver.find_element_by_class_name("select2-selection__rendered")
+        time.sleep(1)
+        select.click()
+        time.sleep(1)
+        select.send_keys(Keys.ARROW_DOWN *tag_list.index(tag_name))
+            #select.send_keys(tag_type)
+        time.sleep(1)
+        select.send_keys(Keys.ENTER)
+        time.sleep(1)
+
+           # Find ADD TAGS button and click
+        driver.find_element_by_xpath("//input[@value='Add Tags']").click()
+        time.sleep(1)
+        print("Update cover photo overlay for menu ID " + str(menuID))
+        text_file = open(completeName, "a+")
+        text_file.write("\nUpdate cover photo overlay for menu ID " + str(menuID))
+        text_file.close()
+
+    '''Find ending date rx id'''
+    restaurantEndingIDs = []
+    i = 0
+    while i < dataframe.shape[0]:
+        row = dataframe.iloc[i]['end_date']
+        if row == yesterdayD:
+            restaurantEndingID = dataframe.iloc[i]['restaurant_ID'] 
+            restaurantEndingIDs.append(restaurantEndingID)
+        i +=1
+    print("These restaurants are ending FD today ")
+    print(restaurantEndingIDs)
+    text_file = open(completeName, "a+")
+    text_file.write("\nThese restaurants are ending FD today " + str(todayD))
+    text_file.write("\nThese restaurant IDs that are ending FD today are" + str(restaurantEndingIDs))
+    text_file.close()
+
+    '''Find restaurants that pay for FD'''
+    restaurantsPayFDEnd = []
+    x = 0
+    while x < dataframe.shape[0]:
+        row = dataframe.iloc[x]['borne_by']
+        if row == "Restaurant":
+            restaurantsPayFDEndid = dataframe.iloc[x]['restaurant_ID']
+            if restaurantsPayFDEndid in restaurantEndingIDs:
+                restaurantsPayFDEnd.append(restaurantsPayFDEndid)
+        x += 1
+    print("These restaurants paid for FD ")
+    print(restaurantsPayFDEnd)
+    text_file = open(completeName, "a+")
+    text_file.write("\nThe restaurant IDs which paid for FD are " + str(restaurantsPayFDEnd))
+    text_file.close()
+
+    '''Find menu IDs for FD restaurants'''
+    menuIdDisableFDs = []
+    x = 0
+    while x < dataframe.shape[0]:
+        row = dataframe.iloc[x]['borne_by']
+        if row == "Restaurant":
+            restaurantsPayFDEndid = dataframe.iloc[x]['menu_ID']
+            if restaurantsPayFDEndid in restaurantEndingIDs:
+                menuIdDisableFDs.append(restaurantsPayFDEndid)
+        x += 1
+    print("These restaurants paid for FD ")
+    print(menuIdDisableFDs)
+    text_file = open(completeName, "a+")
+    text_file.write("\nThe menu IDs which are paid by the rx are " + str(restaurantsPayFDEnd))
+    text_file.close()
+
+    
+    '''Change delivery fee override to null for those rx that are finishing fd yesterday'''
+    for restaurantID in restaurantEndingIDs:
+
+        driver.find_element_by_tag_name('body').send_keys(Keys.COMMAND + 't') 
+        driver.get('https://deliveroo.hk/admin/restaurants/'+str(restaurantID))
+        
+        
+
+        clickEditButton = driver.find_element_by_link_text('Edit')
+        clickEditButton.click()
+
+        MOV = driver.find_element_by_id("restaurant_delivery_min_price").send_keys((Keys.BACK_SPACE)*5+"0")
+
+        deliveryFeeOverride = driver.find_element_by_id("restaurant_delivery_fee_override")
+        deliveryFeeOverride.send_keys((Keys.BACK_SPACE)*5)
+
+        clickSubmit = driver.find_element_by_name("commit")
+        clickSubmit.click()
+
+        '''Taking off 20HKD from contract if restaurants are paying and skip if it is paid by us'''
+        if restaurantID in restaurantsPayFDEnd:
+            print("Removing contract constant for restaurant id "+ str(restaurantID))
+            text_file = open(completeName, "a+")
+            text_file.write("\nRemoving contract constant for restaurant id " + str(restaurantID))
+            text_file.close()
+
+            clickNewContract = driver.find_element_by_xpath("//*[@class='btn btn-primary js-url-actions-create-contract']")
+            clickNewContract.click()
+            time.sleep(3)
+            editContractButton = driver.find_element_by_xpath("//body[@class='admin_temp ng-scope modal-open']/div[@class='modal fade ng-isolate-scope in']/div[@class='modal-dialog modal-lg']/div[@class='modal-content']/div[@class='restaurant-user ng-scope']/div[@class='modal-body']/form[@class='ng-pristine ng-valid']/div[@class='row'][2]/div[@class='col-lg-10']/div[@class='btn-edit']/button[@class='btn btn-secondary']")
+            editContractButton.click()    
+            time.sleep(0.5)
+            
+            try:
+                changeConstant = driver.find_element_by_xpath("//td[4]/span[@class='editable-wrap editable-text ng-scope']/div[@class='editable-controls form-group']/input[@class='editable-input form-control ng-pristine ng-valid ng-touched']").send_keys((Keys.BACKSPACE)*5+"0")
+                time.sleep(0.5)
+                clickSave = driver.find_element_by_xpath("//div[@class='btn-form']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                clickSaveContract = driver.find_element_by_xpath("//div[@class='modal-footer']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                
+            except:
+                changeConstant = driver.find_element_by_xpath("//td[4]/span[@class='editable-wrap editable-text ng-scope']/div[@class='editable-controls form-group']/input[@class='editable-input form-control ng-pristine ng-untouched ng-valid']").send_keys((Keys.BACKSPACE)*5+"0")
+                time.sleep(0.5)
+                clickSave = driver.find_element_by_xpath("//div[@class='btn-form']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                clickSaveContract = driver.find_element_by_xpath("//div[@class='modal-footer']/button[@class='btn btn-primary']").click()
+                time.sleep(0.5)
+                
+    '''Take off Free Delivery menu tag'''
+    for menuIdDisable in menuIdDisableFDs:
+        
+        try:
+		driver.get("https://deliveroo.co.uk/admin/menus/"+str(int(menuIdDisable)))
+		driver.execute_script("window.scrollTo(0, 1500)")
+		time.sleep(1)
+		driver.find_element_by_xpath("//table[@class='table table-hover table-sm']//a[@data-confirm='Are you sure you want to remove the {}{}{} Menu Tag?'][@class='btn btn-danger btn-xs']".format('"',"Free Delivery",'"')).click()
+		time.sleep(1)
+		driver.switch_to_alert().accept()
+		time.sleep(2)
+
+	except Exception:
+		print(resto_id,"No free delivery tag")
+            
+
+todaydate = dt.today().strftime("%m/%d/%Y")
+print("Today date is " + todaydate)
+
+yesterdaydate =((dt.today()-tdelta(1)).strftime("%m/%d/%Y"))
+print("Yesterday date is " + yesterdaydate)
+
+while True:
+    FDenableAndDisable(todaydate, yesterdaydate)
+
+    toContinue = str(input("FINISHED! Do you want to start again? (Y/N)"))
+    
+    if toContinue.upper == 'N':
+        break
+    elif toContinue.upper == 'Y':
+        continue
+
+
+
